@@ -1,1 +1,1 @@
-Wypozyczalnia
+Wypożyczalnia samochodów
