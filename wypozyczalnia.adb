@@ -3,20 +3,22 @@ with Ada.Text_IO;
 use Ada.Text_IO;
 with Ada.Text_IO, Ada.Numerics.Float_Random, Ada.Numerics.Discrete_Random;
 use Ada.Text_IO, Ada.Numerics.Float_Random;
+with Ada.Exceptions;  use Ada.Exceptions;
 
-procedure Semafor is
+procedure Wypozyczalnia is
 
    task type Semaphore is
       entry Wait;  --wejście Wait (opuszczenie semafora)
       entry Signal;  --wejście Signal (podniesienie semafora)
       entry Ilosc;
+      entry Sprawdz(I: out Integer);
    end Semaphore;
 
 
     task body Semaphore is
 
+      MaxCount : Natural := 5;   --ilosc dostepnych aut danego typu do wypozyczenia
       Count : Natural := 5;  --początkowa wartość semafora
-      MaxCount : Natural := 5;   --ilosc dostepnych aut do wypozyczenia
       begin
         loop
           select
@@ -36,8 +38,18 @@ procedure Semafor is
                 Put_Line("Ilosc dostepnych aut tego typu: " & Count'Img);
             end Ilosc;
           or
+            accept Sprawdz(I: out Integer) do
+              I := Count;
+            end Sprawdz;
+          or
             terminate;
           end select;
+          begin
+            Put("");
+          exception
+            when Program_Error     => Put_Line("Program_Error");
+            when Constraint_Error  => Put_Line("Constraint_Error");
+          end;
         end loop;
    end Semaphore;
 
@@ -61,7 +73,8 @@ S_Drozszy : Semaphore;
         select   -- sprawdzanie  czy są komunikaty  od zadań 
           accept Info(N: Integer) do 
             delay 1.0; 
-            Put_Line("witaj w wypozyczalni kliencie "& N'Img);
+            New_Line;
+            Put_Line("Witaj w wypozyczalni kliencie "& N'Img);
             Put_Line("Info o wypozyczalni:");
             Put_Line("TANSZE AUTA:");
             S_Tanszy.Ilosc;  --klient czeka na dostęp do auta
@@ -72,6 +85,12 @@ S_Drozszy : Semaphore;
           accept Koniec;
           exit;
         end select;
+        begin
+          Put("");
+        exception
+          when Program_Error     => Put_Line("Program_Error");
+          when Constraint_Error  => Put_Line("Constraint_Error");
+        end;
     end loop;
     Put_Line("Koniec");
     end Pracownik;
@@ -81,7 +100,8 @@ S_Drozszy : Semaphore;
    
    task body Klient is
     Gen : Ada.Numerics.Float_Random.Generator;
-    Wart : Float;
+    Licznik : Natural;  --początkowa wartość semafora
+
    begin
     loop 
       --  accept Start;	
@@ -90,33 +110,71 @@ S_Drozszy : Semaphore;
         delay duration(random(Gen) * 4.0); -- klienci przychodzą w losowym czasie
 
         Pracownik.Info(N);
-       -- Put_Line("witaj w wypozyczalni kliencie "& N'Img);
-        if (N mod 2 =0) then
+        if (N mod 2 =0) then  -- klienci o parzystych numerach wypozyczaja auta tansze
             Put_Line("Klient: " & N'Img & " chce wypozyczyc tansze auto");
             S_Tanszy.Ilosc;  --klient czeka na dostęp do auta
-            S_Tanszy.Wait;  --klient czeka na dostęp do auta
-            Put_Line("Auto wypozycza klient numer: " & N'Img); -- sekcja krytyczna
-            delay duration(random(Gen) * 20.0);   --  klient korzysta z samochodu
-            S_Tanszy.Signal;  -- klient zwraca auto
-            Put_Line("Auto oddaje klient numer: " & N'Img);
-            Put_Line("Do widzenia");
-        else
+            S_Tanszy.Sprawdz(Licznik);
+            if Licznik=0 then  --brak dostępnych aut w wybranej półce cenowej
+              Put_Line("UWAGA: Klient decyduje sie wypozyczyc drozsze auto");
+              S_Drozszy.Wait;  --klient czeka na dostęp do auta
+              Put_Line("Auto wypozycza klient numer: " & N'Img); -- sekcja krytyczna
+              delay duration(random(Gen) * 20.0);   --  klient korzysta z samochodu
+              S_Drozszy.Signal;  -- klient zwraca auto
+              New_Line;
+              Put_Line("Auto oddaje klient numer: " & N'Img);
+              Put_Line("Do widzenia");
+              New_Line;
+
+            else
+              S_Tanszy.Wait;  --klient czeka na dostęp do auta
+              Put_Line("Auto wypozycza klient numer: " & N'Img); -- sekcja krytyczna
+              delay duration(random(Gen) * 20.0);   --  klient korzysta z samochodu
+              S_Tanszy.Signal;  -- klient zwraca auto
+              New_Line;
+              Put_Line("Auto oddaje klient numer: " & N'Img);
+              Put_Line("Do widzenia");
+              New_Line;
+
+            end if;
+        else -- klienci o nieparzystych numerach wypozyczaja auta drozsze
             Put_Line("Klient: " & N'Img & " chce wypozyczyc drozsze auto");
             S_Drozszy.Ilosc;  --klient czeka na dostęp do auta
-            S_Drozszy.Wait;  --klient czeka na dostęp do auta
-            Put_Line("Auto wypozycza klient numer: " & N'Img); -- sekcja krytyczna
-            delay duration(random(Gen) * 20.0);   --  klient korzysta z samochodu
-            S_Drozszy.Signal;  -- klient zwraca auto
-            Put_Line("Auto oddaje klient numer: " & N'Img);
-            Put_Line("Do widzenia");
+            S_Drozszy.Sprawdz(Licznik);
+            if Licznik=0 then  --brak dostępnych aut w wybranej półce cenowej
+              Put_Line("UWAGA: Klient decyduje sie wypozyczyc tansze auto");
+              S_Tanszy.Wait;  --klient czeka na dostęp do auta
+              Put_Line("Auto wypozycza klient numer: " & N'Img); -- sekcja krytyczna
+              delay duration(random(Gen) * 20.0);   --  klient korzysta z samochodu
+              S_Tanszy.Signal;  -- klient zwraca auto
+              New_Line;
+              Put_Line("Auto oddaje klient numer: " & N'Img);
+              Put_Line("Do widzenia");
+              New_Line;
+
+            else
+              S_Drozszy.Wait;  --klient czeka na dostęp do auta
+              Put_Line("Auto wypozycza klient numer: " & N'Img); -- sekcja krytyczna
+              delay duration(random(Gen) * 20.0);   --  klient korzysta z samochodu
+              S_Drozszy.Signal;  -- klient zwraca auto
+              New_Line;
+              Put_Line("Auto oddaje klient numer: " & N'Img);
+              Put_Line("Do widzenia");
+              New_Line;
+
+            end if;
         end if;
         Pracownik.Koniec;
-
+        begin
+          Put("");
+        exception
+          when Program_Error     => Put_Line("Program_Error");
+          when Constraint_Error  => Put_Line("Constraint_Error");
+        end;
     end loop; 
    end Klient;
 
 
---deklaracja 10 klientow o różnych numerach
+--deklaracja 20 klientow o różnych numerach
 K1 : Klient(1);
 K2 : Klient(2);
 K3 : Klient(3);
@@ -127,7 +185,18 @@ K7 : Klient(7);
 K8 : Klient(8);
 K9 : Klient(9);
 K10 : Klient(10);
+K11 : Klient(12);
+K12 : Klient(14);
+K13 : Klient(16);
+K14 : Klient(18);
+K15 : Klient(20);
+K16 : Klient(22);
+K17 : Klient(24);
+K18 : Klient(26);
+K19 : Klient(28);
+K20 : Klient(30);
+
 
 begin
     Pracownik.Start;
-end Semafor;
+end Wypozyczalnia;
