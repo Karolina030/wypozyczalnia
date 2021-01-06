@@ -1,4 +1,3 @@
-
 with Ada.Text_IO;
 use Ada.Text_IO;
 with Ada.Text_IO, Ada.Numerics.Float_Random, Ada.Numerics.Discrete_Random;
@@ -7,8 +6,51 @@ with Ada.Exceptions;  use Ada.Exceptions;
 
 procedure Wypozyczalnia is
 
+   type YearValue is range 2000..2020;
+   type MaxSpeedValue is range 100..200;
+   type FuelUsageValue is range 4..7;
+   type BrandName is ('A','B','C','D','E');
+
+   package RandomYear is new Ada.Numerics.Discrete_Random(YearValue);
+   package RandomSpeed is new Ada.Numerics.Discrete_Random(MaxSpeedValue);
+   package RandomFuelUsage is new Ada.Numerics.Discrete_Random(FuelUsageValue);
+   package RandomBrand is new Ada.Numerics.Discrete_Random(BrandName);
+
+
+   type Car is record
+      Id : Integer;
+      Brand : BrandName;
+      Year : YearValue;
+      MaxSpeed : MaxSpeedValue;
+      FuelUsage : FuelUsageValue;
+   end record;
+
+   type RentalsCars is array(Integer range <>) of Car;
+
+   procedure PrintCar(RentalCar : in Car) is
+   begin
+      Put_Line("Id:" & RentalCar.Id'Img & " Brand: " & RentalCar.Brand'Img & " Year: " & RentalCar.Year'Img & " Max speed: " & RentalCar.MaxSpeed'Img & "km/h" & " Fuel usage: " & RentalCar.FuelUsage'Img & "l/100km");
+   end PrintCar;
+
+   procedure CreateCars(Cars : in out RentalsCars) is
+      use RandomYear, RandomSpeed, RandomFuelUsage, RandomBrand;
+      RandomYearGen : RandomYear.Generator;
+      RandomSpeedGen : RandomSpeed.Generator;
+      RandomFuelUsageGen : RandomFuelUsage.Generator;
+      RandomBrandGen: RandomBrand.Generator;
+   begin
+      Reset(RandomYearGen);
+      Reset(RandomSpeedGen);
+      Reset(RandomFuelUsageGen);
+      Reset(RandomBrandGen);
+      for I in Cars'Range loop
+         Cars(I) := (I,Random(RandomBrandGen),Random(RandomYearGen), Random(RandomSpeedGen),Random(RandomFuelUsageGen));
+         PrintCar(Cars(I));
+      end loop;
+   end CreateCars;
+
    task type Semaphore is
-      entry Wait;  --wejście Wait (opuszczenie semafora)
+      entry Wait(ClientsCar : out Car);  --wejście Wait (opuszczenie semafora)
       entry Signal;  --wejście Signal (podniesienie semafora)
       entry Ilosc;
       entry Sprawdz(I: out Integer);
@@ -16,25 +58,29 @@ procedure Wypozyczalnia is
 
 
     task body Semaphore is
-
-      MaxCount : Natural := 5;   --ilosc dostepnych aut danego typu do wypozyczenia
-      Count : Natural := 5;  --początkowa wartość semafora
-      begin
-        loop
+      Rental : RentalsCars(1..5);
+      MaxCount : Natural;   --ilosc dostepnych aut danego typu do wypozyczenia
+      Count : Natural;  --początkowa wartość semafora
+    begin
+      CreateCars(Rental);
+      MaxCount:=Rental'Length;
+      Count:=Rental'Length;
+      loop
           select
             when Count > 0 =>
-              accept Wait
-                do 
+              accept Wait(ClientsCar : out Car)
+               do
+                  ClientsCar := Rental(Count);
                   Count := Count - 1;
               end Wait;
           or
             when Count < MaxCount =>
               accept Signal
-                do 
+                do
                   Count := Count + 1;
               end Signal;
-          or 
-            accept Ilosc do 
+          or
+            accept Ilosc do
                 Put_Line("Ilosc dostepnych aut tego typu: " & Count'Img);
             end Ilosc;
           or
@@ -67,12 +113,13 @@ S_Drozszy : Semaphore;
     task body Pracownik is
   --  N: Integer;
     begin
+
     accept Start;
 
     loop
-        select   -- sprawdzanie  czy są komunikaty  od zadań 
-          accept Info(N: Integer) do 
-            delay 1.0; 
+        select   -- sprawdzanie  czy są komunikaty  od zadań
+          accept Info(N: Integer) do
+            delay 1.0;
             New_Line;
             Put_Line("Witaj w wypozyczalni kliencie "& N'Img);
             Put_Line("Info o wypozyczalni:");
@@ -81,7 +128,7 @@ S_Drozszy : Semaphore;
             Put_Line("DROZSZE AUTA:");
             S_Drozszy.Ilosc;
           end Info;
-        or  
+        or
           accept Koniec;
           exit;
         end select;
@@ -97,14 +144,15 @@ S_Drozszy : Semaphore;
 
 
    task type Klient(N: Integer); -- tworzony jest typ zadaniowy, reprezentujacy klientow
-   
+
    task body Klient is
     Gen : Ada.Numerics.Float_Random.Generator;
     Licznik : Natural;  --początkowa wartość semafora
+    ClientsCar : Car;
 
    begin
-    loop 
-      --  accept Start;	
+    loop
+      --  accept Start;
 
         reset(Gen);
         delay duration(random(Gen) * 4.0); -- klienci przychodzą w losowym czasie
@@ -116,8 +164,10 @@ S_Drozszy : Semaphore;
             S_Tanszy.Sprawdz(Licznik);
             if Licznik=0 then  --brak dostępnych aut w wybranej półce cenowej
               Put_Line("UWAGA: Klient decyduje sie wypozyczyc drozsze auto");
-              S_Drozszy.Wait;  --klient czeka na dostęp do auta
+              S_Drozszy.Wait(ClientsCar);  --klient czeka na dostęp do auta
               Put_Line("Auto wypozycza klient numer: " & N'Img); -- sekcja krytyczna
+              Put_Line("Wypożyczone auto:");
+              PrintCar(ClientsCar);
               delay duration(random(Gen) * 20.0);   --  klient korzysta z samochodu
               S_Drozszy.Signal;  -- klient zwraca auto
               New_Line;
@@ -126,8 +176,10 @@ S_Drozszy : Semaphore;
               New_Line;
 
             else
-              S_Tanszy.Wait;  --klient czeka na dostęp do auta
+              S_Tanszy.Wait(ClientsCar);  --klient czeka na dostęp do auta
               Put_Line("Auto wypozycza klient numer: " & N'Img); -- sekcja krytyczna
+              Put_Line("Wypożyczone auto:");
+              PrintCar(ClientsCar);
               delay duration(random(Gen) * 20.0);   --  klient korzysta z samochodu
               S_Tanszy.Signal;  -- klient zwraca auto
               New_Line;
@@ -142,8 +194,10 @@ S_Drozszy : Semaphore;
             S_Drozszy.Sprawdz(Licznik);
             if Licznik=0 then  --brak dostępnych aut w wybranej półce cenowej
               Put_Line("UWAGA: Klient decyduje sie wypozyczyc tansze auto");
-              S_Tanszy.Wait;  --klient czeka na dostęp do auta
+              S_Tanszy.Wait(ClientsCar);  --klient czeka na dostęp do auta
               Put_Line("Auto wypozycza klient numer: " & N'Img); -- sekcja krytyczna
+              Put_Line("Wypożyczone auto:");
+              PrintCar(ClientsCar);
               delay duration(random(Gen) * 20.0);   --  klient korzysta z samochodu
               S_Tanszy.Signal;  -- klient zwraca auto
               New_Line;
@@ -152,8 +206,10 @@ S_Drozszy : Semaphore;
               New_Line;
 
             else
-              S_Drozszy.Wait;  --klient czeka na dostęp do auta
+              S_Drozszy.Wait(ClientsCar);  --klient czeka na dostęp do auta
               Put_Line("Auto wypozycza klient numer: " & N'Img); -- sekcja krytyczna
+              Put_Line("Wypożyczone auto:");
+              PrintCar(ClientsCar);
               delay duration(random(Gen) * 20.0);   --  klient korzysta z samochodu
               S_Drozszy.Signal;  -- klient zwraca auto
               New_Line;
@@ -170,7 +226,7 @@ S_Drozszy : Semaphore;
           when Program_Error     => Put_Line("Program_Error");
           when Constraint_Error  => Put_Line("Constraint_Error");
         end;
-    end loop; 
+    end loop;
    end Klient;
 
 
