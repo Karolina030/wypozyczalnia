@@ -1,7 +1,7 @@
-with Ada.Text_IO; use Ada.Text_IO;
-with Ada.Text_IO, Ada.Numerics.Float_Random, Ada.Numerics.Discrete_Random;
-use Ada.Text_IO, Ada.Numerics.Float_Random;
-with Ada.Exceptions; use Ada.Exceptions;
+with Ada.Text_IO;         use Ada.Text_IO;
+with Ada.Exceptions;      use Ada.Exceptions;
+with Ada.Integer_Text_IO; use Ada.Integer_Text_IO;
+with Ada.Numerics.Float_Random, Ada.Numerics.Discrete_Random;
 
 procedure Wypozyczalnia is
 
@@ -13,7 +13,8 @@ procedure Wypozyczalnia is
 
    package RandomYear is new Ada.Numerics.Discrete_Random (YearValue);
    package RandomSpeed is new Ada.Numerics.Discrete_Random (MaxSpeedValue);
-   package RandomFuelUsage is new Ada.Numerics.Discrete_Random(FuelUsageValue);
+   package RandomFuelUsage is new Ada.Numerics.Discrete_Random
+     (FuelUsageValue);
    package RandomBrand is new Ada.Numerics.Discrete_Random (BrandName);
    package RandomPrice is new Ada.Numerics.Discrete_Random (PriceValue);
 
@@ -27,8 +28,7 @@ procedure Wypozyczalnia is
    end record;
 
    type Cars is array (Integer range <>) of Car;
-      type BoolVector is array (Integer range <>) of Boolean;
-
+   type BoolVector is array (Integer range <>) of Boolean;
 
    procedure PrintCar (RentalsCar : in Car) is
    begin
@@ -63,128 +63,206 @@ procedure Wypozyczalnia is
       return RentalsCars;
    end CreateCars;
 
-   protected type Rental (NumberOfCars : Integer) is
-      entry Offer (RentalsOffer : out Cars);
-      entry RentCar (CarId : in Integer;RentedCar : out Car);
-      entry RetrieveCar (CarId : in Integer);
+   protected type RentalTask (NumberOfCars : Integer) is
+      procedure Offer (RentalsOffer : out Cars);
+      procedure RentCar
+        (CarId : in Integer; RentedCar : out Car; IsCarPicked : out Boolean);
+      procedure RetrieveCar (CarId : in Integer);
    private
-      RentalsCars : Cars (0 .. NumberOfCars) := CreateCars (NumberOfCars);
-      IsCarAviable : BoolVector ( 0 .. NumberOfCars)  := (0 .. NumberOfCars => True);
-   end Rental;
+      RentalsCars  : Cars (0 .. NumberOfCars) := CreateCars (NumberOfCars);
+      IsCarAviable : BoolVector (0 .. NumberOfCars) :=
+        (0 .. NumberOfCars => True);
+   end RentalTask;
 
-   CarNotAvaiableException : exception;
-
-   protected body Rental is
-      entry Offer (RentalsOffer : out Cars) when True is
+   protected body RentalTask is
+      procedure Offer (RentalsOffer : out Cars) is
       begin
-         RentalsOffer:= RentalsCars;
+         RentalsOffer := RentalsCars;
       end Offer;
-      entry RentCar (CarId : in Integer; RentedCar : out Car) when True is
+      procedure RentCar
+        (CarId : in Integer; RentedCar : out Car; IsCarPicked : out Boolean)
+      is
       begin
-         if IsCarAviable(CarId) then
-         RentedCar := RentalsCars(CarId);
-            IsCarAviable(CarId) := False;
+         if IsCarAviable (CarId) then
+            RentedCar            := RentalsCars (CarId);
+            IsCarAviable (CarId) := False;
+            IsCarPicked          := True;
          else
-            raise CarNotAvaiableException with "Car not avaiable";
-            end if;
+            IsCarPicked := False;
+         end if;
       end RentCar;
-      entry RetrieveCar (CarId : in Integer) when True is
+      procedure RetrieveCar (CarId : in Integer) is
       begin
-         IsCarAviable(CarId) := True;
+         IsCarAviable (CarId) := True;
       end RetrieveCar;
-   end Rental;
+   end RentalTask;
 
-   FirstRental : Rental(5);
+   type RentalTaskPtr is access RentalTask;
 
-   task type CustomerService(CustomerServiceId : Integer; NumberOfCars: Integer) is
-      entry Offer(ClientsId: in Integer;RentalsOffer : out Cars);
-      entry RentCar(ClientsId: in Integer;CarId : in Integer;RentedCar : out Car);
-      entry RetrieveCar(ClientsId: in Integer;CarId : in Integer);
+   task type CustomerServiceTask
+     (CustomerServiceId : Integer; NumberOfCars : Integer;
+      Rental            : RentalTaskPtr)
+   is
+      entry Offer (ClientsId : in Integer; RentalsOffer : out Cars);
+      entry RentCar
+        (ClientsId   : in     Integer; CarId : in Integer; RentedCar : out Car;
+         IsCarPicked : in out Boolean);
+      entry RetrieveCar (ClientsId : in Integer; CarId : in Integer);
       entry StartTask;
       entry EndTask;
-    end CustomerService;
+   end CustomerServiceTask;
 
-   task body CustomerService is
-            CarsToRent : Cars (0 .. NumberOfCars);
-    begin
-      accept StartTask;
-      FirstRental.Offer(CarsToRent);
-      loop
-        select   -- sprawdzanie  czy są komunikaty  od zadań
-          accept Offer(ClientsId: in  Integer;RentalsOffer : out  Cars) do
-            delay 1.0;
-            New_Line;
-            Put_Line("Witaj w wypozyczalni kliencie "& ClientsId'Img);
-            Put_Line("Oto wszystkie samochody w naszej ofercie:");
-            RentalsOffer:=CarsToRent;
-            end Offer;
-         or accept  RentCar(ClientsId: in Integer;CarId : in Integer;RentedCar : out Car) do
-            delay 1.0;
-            New_Line;
-            Put_Line("Witaj w wypozyczalni kliencie "& ClientsId'Img);
-            Put_Line("Rozpoczynam proces wynajmu auta...");
-               FirstRental.RentCar(CarId,RentedCar);
-               Put_Line("Dziękujemy za wynajęcie auta");
-            end RentCar;
-         or accept RetrieveCar(ClientsId: in Integer;CarId : in Integer) do
-                           delay 1.0;
-            New_Line;
-            Put_Line("Witaj w wypozyczalni kliencie "& ClientsId'Img);
-            Put_Line("Rozpoczynam proces zwrotu auta...");
-            FirstRental.RetrieveCar(CarId);
-            Put_Line("Dziękujemy za wynajęcie auta");
-            end RetrieveCar;
-        or
-          accept EndTask;
-          exit;
-        end select;
-        begin
-          Put("");
-        exception
-          when Program_Error     => Put_Line("Program_Error");
-            when Constraint_Error  => Put_Line("Constraint_Error");
-          when CarNotAvaiableException => raise;
-        end;
-      end loop;
-      Put_Line("Koniec symulacji");
-      end CustomerService;
-   CustomerService1 : CustomerService(1,5);
-
-   task type Client(ClientsId: Integer); -- tworzony jest typ zadaniowy, reprezentujacy klientow
-
-   task body Client is
-      Gen : Ada.Numerics.Float_Random.Generator;
-      ClientsCar : Car;
-      RentalsOffer : Cars (0..5);
+   task body CustomerServiceTask is
+      CarsToRent : Cars (0 .. NumberOfCars);
    begin
-      reset(Gen);
-      delay duration(random(Gen) * 4.0); -- klienci przychodzą w losowym czasie
-      CustomerService1.Offer(ClientsId,RentalsOffer);
-      for I in RentalsOffer'Range loop
-         PrintCar(RentalsOffer(I));
+      accept StartTask;
+      Rental.Offer (CarsToRent);
+      loop
+         select
+            accept Offer (ClientsId : in Integer; RentalsOffer : out Cars) do
+               delay 1.0;
+               New_Line;
+               Put_Line
+                 ("Witaj w wypozyczalni kliencie " & ClientsId'Img &
+                  ", pracownik numer " & CustomerServiceId'Img &
+                  " do twoich usług");
+               Put_Line ("Oto wszystkie samochody w naszej ofercie:");
+               RentalsOffer := CarsToRent;
+            end Offer;
+         or
+            accept RentCar
+              (ClientsId : in Integer; CarId : in Integer; RentedCar : out Car;
+               IsCarPicked : in out Boolean)
+            do
+               delay 1.0;
+               New_Line;
+               Put_Line ("Witaj w wypozyczalni kliencie " & ClientsId'Img);
+               Put_Line ("Rozpoczynam proces wynajmu auta...");
+               Rental.RentCar (CarId, RentedCar, IsCarPicked);
+               Put_Line ("Dziękujemy za wynajęcie auta");
+               if IsCarPicked = False then
+                  Put_Line
+                    ("Podane auto jest wynajęte, proszę wybrać inne auto");
+               end if;
+
+            end RentCar;
+         or
+            accept RetrieveCar (ClientsId : in Integer; CarId : in Integer) do
+               delay 1.0;
+               New_Line;
+               Put_Line ("Witaj w wypozyczalni kliencie " & ClientsId'Img);
+               Put_Line ("Rozpoczynam proces zwrotu auta...");
+               Rental.RetrieveCar (CarId);
+               Put_Line ("Dziękujemy za wynajęcie auta");
+            end RetrieveCar;
+         or
+            accept EndTask;
+            exit;
+         end select;
       end loop;
-      Put_Line("Klient: " & ClientsId'Img & " chce skorzystać z usług wypozyczalni");
-      CustomerService1.RentCar(ClientsId,1,ClientsCar);
-      PrintCar(ClientsCar);
-      delay duration(random(Gen) * 20.0);   --  Client korzysta z samochodu
-      CustomerService1.RetrieveCar(ClientsId,1);
-      New_Line;
-      Put_Line("Do widzenia");
-      New_Line;
-      CustomerService1.EndTask;
-      begin
-      Put("");
-      exception
-         when Program_Error     => Put_Line("Program_Error");
-         when Constraint_Error  => Put_Line("Constraint_Error");
-         when CarNotAvaiableException => raise;
-        end;
-   end Client;
+   end CustomerServiceTask;
 
-   Client1 : Client(1);
-   Client2 : Client(2);
+   type CustomerServiceTaskPtr is access CustomerServiceTask;
+   type CustomerServiceTaskArray is
+     array (Integer range <>) of CustomerServiceTaskPtr;
+   type CustomerServiceTaskArrayPtr is access CustomerServiceTaskArray;
 
+   task type ClientTask
+     (ClientsId    : Integer; CustomerService : CustomerServiceTaskArrayPtr;
+      NumberOfCars : Integer)
+   ;
+
+   task body ClientTask is
+      type CustomerServiceRange is
+        new Integer range 0 .. CustomerService'Length;
+      type CarRange is new Integer range 0 .. NumberOfCars;
+      package RandomCustomerService is new Ada.Numerics.Discrete_Random
+        (CustomerServiceRange);
+      package RandomCar is new Ada.Numerics.Discrete_Random (CarRange);
+      use Ada.Numerics.Float_Random, RandomCustomerService, RandomCar;
+      FloatGen                 : Ada.Numerics.Float_Random.Generator;
+      RandomCustomerServiceGen : RandomCustomerService.Generator;
+      RandomCarGen             : RandomCar.Generator;
+      ClientsCarId             : Integer;
+      ClientsCar               : Car;
+      RentalsOffer             : Cars (0 .. NumberOfCars);
+      CustomerServiceId        : Integer;
+      IsCarPicked              : Boolean := False;
+   begin
+      Reset (FloatGen);
+      Reset (RandomCustomerServiceGen);
+      Reset (RandomCarGen);
+      CustomerServiceId := Integer (Random (RandomCustomerServiceGen));
+      delay Duration (Random (FloatGen) * 4.0);
+      Put_Line
+        ("Klient " & ClientsId'Img &
+         " chce skorzystać z usług wypozyczalni");
+      CustomerService (CustomerServiceId).Offer (ClientsId, RentalsOffer);
+      Put_Line
+        ("Klient " & ClientsId'Img & " przegląda ofertę wypożyczalni");
+      for I in RentalsOffer'Range loop
+         PrintCar (RentalsOffer (I));
+      end loop;
+
+      while not IsCarPicked loop
+         begin
+            ClientsCarId := Integer (Random (RandomCarGen));
+            Put_Line
+              ("Klient " & ClientsId'Img &
+               " decyduje się na samochód numer: " & ClientsCarId'Img);
+            CustomerService (CustomerServiceId).RentCar
+              (ClientsId, ClientsCarId, ClientsCar, IsCarPicked);
+         end;
+      end loop;
+      PrintCar (ClientsCar);
+      delay Duration (Random (FloatGen) * 20.0);
+      CustomerService (CustomerServiceId).RetrieveCar
+        (ClientsId, ClientsCarId);
+      New_Line;
+      Put_Line ("Klient " & ClientsId'Img & " żegna się");
+      New_Line;
+   end ClientTask;
+
+   type ClientTaskPtr is access ClientTask;
+   type ClientTaskArray is array (Integer range <>) of ClientTaskPtr;
+   type ClientTaskArrayPtr is access ClientTaskArray;
+
+   --variables
+   CarsCount       : Integer;
+   WorkersCount    : Integer;
+   ClientsCount    : Integer;
+   Rental          : RentalTaskPtr;
+   CustomerService : CustomerServiceTaskArrayPtr;
+   Clients         : ClientTaskArrayPtr;
 
 begin
-   CustomerService1.StartTask;
+   Ada.Text_IO.Put ("Podaj liczbę samochodów w wypożyczalni: ");
+   Ada.Integer_Text_IO.Get (CarsCount);
+   Ada.Text_IO.Put ("Podaj liczbę pracowników wypożyczalni: ");
+   Ada.Integer_Text_IO.Get (WorkersCount);
+   Ada.Text_IO.Put ("Podaj liczbę klientów wypożyczalni: ");
+   Ada.Integer_Text_IO.Get (ClientsCount);
+   CarsCount       := CarsCount - 1;
+   WorkersCount    := WorkersCount - 1;
+   ClientsCount    := ClientsCount - 1;
+   Rental          := new RentalTask (CarsCount);
+   CustomerService := new CustomerServiceTaskArray (0 .. WorkersCount);
+   Clients         := new ClientTaskArray (0 .. ClientsCount);
+   begin
+      for I in CustomerService'Range loop
+         CustomerService (I) := new CustomerServiceTask (I, CarsCount, Rental);
+         CustomerService (I).StartTask;
+      end loop;
+      for I in Clients'Range loop
+         Clients (I) := new ClientTask (I, CustomerService, CarsCount);
+      end loop;
+   end;
+   loop
+      if (for all RentalClient of Clients.all => RentalClient'Terminated) then
+         exit;
+      end if;
+   end loop;
+   for I in CustomerService'Range loop
+      CustomerService (I).EndTask;
+   end loop;
 end Wypozyczalnia;
