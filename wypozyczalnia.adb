@@ -8,7 +8,7 @@ procedure Wypozyczalnia is
    type YearValue is range 2_000 .. 2_020;
    type MaxSpeedValue is range 100 .. 200;
    type FuelUsageValue is range 4 .. 8;
-   type BrandName is ('A', 'B', 'C', 'D', 'E');
+   type BrandName is (BMW, Audi, Ford, Nissan, Toyota);
    type PriceValue is range 50 .. 200;
 
    package RandomYear is new Ada.Numerics.Discrete_Random (YearValue);
@@ -136,13 +136,13 @@ procedure Wypozyczalnia is
             do
                delay 1.0;
                New_Line;
-               Put_Line ("Witaj w wypozyczalni kliencie " & ClientsId'Img);
-               Put_Line ("Rozpoczynam proces wynajmu auta...");
+               Put_Line ("Klient " & ClientsId'Img & " - rozpoczynam proces wynajmu auta...");
                Rental.RentCar (CarId, RentedCar, IsCarPicked);
-               Put_Line ("Dziękujemy za wynajęcie auta");
                if IsCarPicked = False then
-                  Put_Line
-                    ("Podane auto jest wynajęte, proszę wybrać inne auto");
+                  Put_Line 
+                    ("Wybrane auto jest niestety wynajęte, proszę wybrać inne auto");
+               else
+                  Put_Line ("Klient " & ClientsId'Img & " - dziękujemy za wynajęcie auta:");
                end if;
 
             end RentCar;
@@ -200,9 +200,12 @@ procedure Wypozyczalnia is
       CustomerService (CustomerServiceId).Offer (ClientsId, RentalsOffer);
       Put_Line
         ("Klient " & ClientsId'Img & " przegląda ofertę wypożyczalni");
+      New_Line;
       for I in RentalsOffer'Range loop
          PrintCar (RentalsOffer (I));
       end loop;
+      New_Line;
+
 
       while not IsCarPicked loop
          begin
